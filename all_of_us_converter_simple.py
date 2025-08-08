@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Simple All of Us OMOP to MEDS converter that handles datetime columns properly.
+Uses SNOMED CT concept IDs for standardized vocabulary.
 """
 
 import polars as pl
@@ -13,14 +14,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def convert_condition_chunk(df: pl.DataFrame) -> pl.DataFrame:
-    """Convert a chunk of condition_occurrence data to MEDS format"""
+    """Convert a chunk of condition_occurrence data to MEDS format using SNOMED CT concepts"""
     logger.info(f"Condition schema: {df.schema}")
     
-    # Handle datetime field directly (it's already datetime type)
     return df.select([
         pl.col("person_id").alias("subject_id"),
         pl.col("condition_start_datetime").alias("time"),  # Already datetime
-        pl.concat_str([pl.lit("CONDITION//"), pl.col("condition_source_value")]).alias("code"),
+        pl.concat_str([pl.lit("CONDITION//"), pl.col("condition_concept_id").cast(pl.Utf8)]).alias("code"),
         pl.lit(1.0).alias("numeric_value")
     ]).filter(
         pl.col("subject_id").is_not_null() & 
@@ -33,11 +33,11 @@ def convert_condition_chunk(df: pl.DataFrame) -> pl.DataFrame:
     ])
 
 def convert_drug_chunk(df: pl.DataFrame) -> pl.DataFrame:
-    """Convert a chunk of drug_exposure data to MEDS format"""
+    """Convert a chunk of drug_exposure data to MEDS format using SNOMED CT concepts"""
     return df.select([
         pl.col("person_id").alias("subject_id"),
         pl.col("drug_exposure_start_datetime").alias("time"),  # Already datetime
-        pl.concat_str([pl.lit("DRUG//"), pl.col("drug_source_value")]).alias("code"),
+        pl.concat_str([pl.lit("DRUG//"), pl.col("drug_concept_id").cast(pl.Utf8)]).alias("code"),
         pl.lit(1.0).alias("numeric_value")
     ]).filter(
         pl.col("subject_id").is_not_null() & 
@@ -50,11 +50,11 @@ def convert_drug_chunk(df: pl.DataFrame) -> pl.DataFrame:
     ])
 
 def convert_procedure_chunk(df: pl.DataFrame) -> pl.DataFrame:
-    """Convert a chunk of procedure_occurrence data to MEDS format"""
+    """Convert a chunk of procedure_occurrence data to MEDS format using SNOMED CT concepts"""
     return df.select([
         pl.col("person_id").alias("subject_id"),
         pl.col("procedure_datetime").alias("time"),  # Already datetime
-        pl.concat_str([pl.lit("PROCEDURE//"), pl.col("procedure_source_value")]).alias("code"),
+        pl.concat_str([pl.lit("PROCEDURE//"), pl.col("procedure_concept_id").cast(pl.Utf8)]).alias("code"),
         pl.lit(1.0).alias("numeric_value")
     ]).filter(
         pl.col("subject_id").is_not_null() & 
@@ -67,11 +67,11 @@ def convert_procedure_chunk(df: pl.DataFrame) -> pl.DataFrame:
     ])
 
 def convert_measurement_chunk(df: pl.DataFrame) -> pl.DataFrame:
-    """Convert a chunk of measurement data to MEDS format"""
+    """Convert a chunk of measurement data to MEDS format using SNOMED CT concepts"""
     return df.select([
         pl.col("person_id").alias("subject_id"),
         pl.col("measurement_datetime").alias("time"),  # Already datetime
-        pl.concat_str([pl.lit("LAB//"), pl.col("measurement_source_value")]).alias("code"),
+        pl.concat_str([pl.lit("LAB//"), pl.col("measurement_concept_id").cast(pl.Utf8)]).alias("code"),
         pl.col("value_as_number").fill_null(1.0).alias("numeric_value")
     ]).filter(
         pl.col("subject_id").is_not_null() & 
@@ -84,12 +84,46 @@ def convert_measurement_chunk(df: pl.DataFrame) -> pl.DataFrame:
     ])
 
 def convert_observation_chunk(df: pl.DataFrame) -> pl.DataFrame:
-    """Convert a chunk of observation data to MEDS format"""
+    """Convert a chunk of observation data to MEDS format using SNOMED CT concepts"""
     return df.select([
         pl.col("person_id").alias("subject_id"),
         pl.col("observation_datetime").alias("time"),  # Already datetime
-        pl.concat_str([pl.lit("OBSERVATION//"), pl.col("observation_source_value")]).alias("code"),
+        pl.concat_str([pl.lit("OBSERVATION//"), pl.col("observation_concept_id").cast(pl.Utf8)]).alias("code"),
         pl.coalesce(pl.col("value_as_number"), pl.lit(1.0)).alias("numeric_value")
+    ]).filter(
+        pl.col("subject_id").is_not_null() & 
+        pl.col("time").is_not_null() & 
+        pl.col("code").is_not_null()
+    ).with_columns([
+        (pl.col("time").dt.timestamp("us")).alias("time"),
+        pl.col("subject_id").cast(pl.Float64),
+        pl.col("numeric_value").cast(pl.Float64)
+    ])
+
+def convert_visit_chunk(df: pl.DataFrame) -> pl.DataFrame:
+    """Convert a chunk of visit_occurrence data to MEDS format using SNOMED CT concepts"""
+    return df.select([
+        pl.col("person_id").alias("subject_id"),
+        pl.col("visit_start_datetime").alias("time"),  # Already datetime
+        pl.concat_str([pl.lit("VISIT//"), pl.col("visit_concept_id").cast(pl.Utf8)]).alias("code"),
+        pl.lit(1.0).alias("numeric_value")
+    ]).filter(
+        pl.col("subject_id").is_not_null() & 
+        pl.col("time").is_not_null() & 
+        pl.col("code").is_not_null()
+    ).with_columns([
+        (pl.col("time").dt.timestamp("us")).alias("time"),
+        pl.col("subject_id").cast(pl.Float64),
+        pl.col("numeric_value").cast(pl.Float64)
+    ])
+
+def convert_device_chunk(df: pl.DataFrame) -> pl.DataFrame:
+    """Convert a chunk of device_exposure data to MEDS format using SNOMED CT concepts"""
+    return df.select([
+        pl.col("person_id").alias("subject_id"),
+        pl.col("device_exposure_start_datetime").alias("time"),  # Already datetime
+        pl.concat_str([pl.lit("DEVICE//"), pl.col("device_concept_id").cast(pl.Utf8)]).alias("code"),
+        pl.lit(1.0).alias("numeric_value")
     ]).filter(
         pl.col("subject_id").is_not_null() & 
         pl.col("time").is_not_null() & 
@@ -120,7 +154,9 @@ def process_table_in_chunks(input_dir: Path, output_dir: Path, table_name: str, 
         "drug_exposure": convert_drug_chunk,
         "procedure_occurrence": convert_procedure_chunk,
         "measurement": convert_measurement_chunk,
-        "observation": convert_observation_chunk
+        "observation": convert_observation_chunk,
+        "visit_occurrence": convert_visit_chunk,
+        "device_exposure": convert_device_chunk
     }
     
     if table_name not in convert_funcs:
@@ -312,7 +348,7 @@ def main():
     temp_dir.mkdir(parents=True, exist_ok=True)
     
     # Process each table
-    tables = ["condition_occurrence", "drug_exposure", "procedure_occurrence", "measurement", "observation"]
+    tables = ["condition_occurrence", "drug_exposure", "procedure_occurrence", "measurement", "observation", "visit_occurrence", "device_exposure"]
     
     for table in tables:
         logger.info(f"\n=== Processing {table} ===")

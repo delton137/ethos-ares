@@ -95,6 +95,34 @@ class HCPCSData:
             .alias("code")
         ])
 
+class VisitData:
+    """Visit data processing for All of Us."""
+    
+    @staticmethod
+    @MatchAndRevise(prefix="VISIT//", apply_vocab=True)
+    def process_visits(df: pl.DataFrame) -> pl.DataFrame:
+        """Process visit occurrence events."""
+        return df.with_columns([
+            pl.when(pl.col("code").str.starts_with("VISIT//"))
+            .then(pl.concat_str([pl.lit("VISIT//"), pl.col("code").str.replace("VISIT//", "")]))
+            .otherwise(pl.col("code"))
+            .alias("code")
+        ])
+
+class DeviceData:
+    """Device data processing for All of Us."""
+    
+    @staticmethod
+    @MatchAndRevise(prefix="DEVICE//", apply_vocab=True)
+    def process_devices(df: pl.DataFrame) -> pl.DataFrame:
+        """Process device exposure events."""
+        return df.with_columns([
+            pl.when(pl.col("code").str.starts_with("DEVICE//"))
+            .then(pl.concat_str([pl.lit("DEVICE//"), pl.col("code").str.replace("DEVICE//", "")]))
+            .otherwise(pl.col("code"))
+            .alias("code")
+        ])
+
 class DeathData:
     """Death data processing for All of Us."""
     

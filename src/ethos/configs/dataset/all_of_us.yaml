@@ -16,6 +16,8 @@ stages:
       - InpatientData.process_hospital_admissions
       - InpatientData.process_hospital_discharges # must be before processing diagnoses
       - HCPCSData.unify_names
+      - VisitData.process_visits
+      - DeviceData.process_devices
     vocab: ${vocab}
 
   - name: CodeCounter

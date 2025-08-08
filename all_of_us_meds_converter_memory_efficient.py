@@ -16,12 +16,13 @@ logger = logging.getLogger(__name__)
 
 def process_parquet_directory_in_chunks(data_dir: Path, output_path: Path, table_name: str, chunk_size: int = 1000000):
     """Process parquet files in chunks to avoid memory issues"""
-    parquet_files = list(data_dir.glob("*.parquet"))
+    table_dir = data_dir / table_name
+    parquet_files = list(table_dir.glob("*.parquet"))
     if not parquet_files:
-        logger.warning(f"No parquet files found in {data_dir}")
+        logger.warning(f"No parquet files found in {table_dir}")
         return
     
-    logger.info(f"Processing {len(parquet_files)} parquet files from {data_dir} in chunks")
+    logger.info(f"Processing {len(parquet_files)} parquet files from {table_dir} in chunks")
     
     # Define conversion function based on table name
     if table_name == "condition_occurrence":
@@ -216,9 +217,10 @@ def add_birth_death_records_memory_efficient(data_dir: Path, output_path: Path):
                 if chunk_df.is_empty():
                     continue
                 
+                # Handle death_date column properly - convert to string first if it's a date
                 death_chunk = chunk_df.select([
                     pl.col("person_id").alias("subject_id"),
-                    pl.col("death_date").str.strptime(pl.Date, format="%Y-%m-%d").cast(pl.Datetime).dt.timestamp("us").alias("time"),
+                    pl.col("death_date").cast(pl.Utf8).str.strptime(pl.Date, format="%Y-%m-%d").cast(pl.Datetime).dt.timestamp("us").alias("time"),
                     pl.lit("MEDS_DEATH").alias("code"),
                     pl.lit(1.0).alias("numeric_value")
                 ]).filter(

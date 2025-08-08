@@ -21,8 +21,8 @@ fi
 # Change to the root directory
 cd "$root_dir"
 
-input_dir="data/mimic-2.2-meds${suffix//_/-}/data"
-output_dir="data/tokenized_datasets/mimic${suffix//-/_}"
+input_dir="/home/jupyter/workspaces/ehrtransformerbaseline/meds_data/data"
+output_dir="/home/jupyter/workspaces/ehrtransformerbaseline/ethos_data"
 
 echo "=== HIGH-PERFORMANCE ETHOS TOKENIZATION ==="
 echo "Root directory: $root_dir"

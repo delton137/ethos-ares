@@ -13,6 +13,7 @@ from ..constants import SpecialToken as ST
 from ..datasets import TimelineDataset
 from ..inference.utils import wait_for_workers
 from ..vocabulary import Vocabulary
+from .checkpoint import TokenizationCheckpoint, get_stage_output_files, verify_stage_outputs
 from .run_stage import run_stage
 from .utils import load_function
 
@@ -32,6 +33,20 @@ def main(cfg: DictConfig):
     cfg.output_dir = str(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Initialize checkpoint system
+    checkpoint = TokenizationCheckpoint(output_dir)
+    resume_enabled = cfg.get('resume', False)
+    
+    if resume_enabled:
+        checkpoint_loaded = checkpoint.load()
+        if checkpoint_loaded:
+            logger.info(f"Resuming tokenization from checkpoint")
+        else:
+            logger.info(f"No checkpoint found, starting fresh tokenization")
+    else:
+        # Clear any existing checkpoint if not resuming
+        checkpoint.clear()
+
     logger.info(f"Tokenizing '{input_dir}' using the {dataset.upper()} preprocessing pipeline.")
 
     in_fps = list(input_dir.glob("*.parquet"))
@@ -40,11 +55,29 @@ def main(cfg: DictConfig):
 
     i = 1
     for stage_cfg in cfg.dataset.stages:
+        stage_name = stage_cfg.name
+        stage_dir = output_dir / f"{i:02}_{stage_name}"
+        
+        # Check if this stage should be skipped
         if stage_cfg.get("skip", False):
-            logger.info(f"Skipping stage {stage_cfg.name}")
+            logger.info(f"Skipping stage {stage_name}")
+            i += 1
             continue
-
-        stage_dir = output_dir / f"{i:02}_{stage_cfg.name}"
+            
+        # Check if stage is already completed
+        if resume_enabled and checkpoint.is_stage_completed(stage_name):
+            logger.info(f"Stage {stage_name} already completed, skipping")
+            # Use the output files from the completed stage
+            completed_files = checkpoint.get_completed_stage_files(stage_name)
+            if completed_files:
+                in_fps = [stage_dir / f for f in completed_files]
+            i += 1
+            continue
+            
+        # Set current stage for checkpointing
+        if resume_enabled:
+            checkpoint.set_current_stage(stage_name)
+            
         stage_dir.mkdir(parents=True, exist_ok=True)
         out_fps = [stage_dir / fp.name for fp in in_fps]
 
@@ -61,6 +94,11 @@ def main(cfg: DictConfig):
 
         # Make workers wait for lock file deletion to avoid moving on prematurely
         wait_for_workers(stage_dir)
+
+        # Mark stage as completed and save checkpoint
+        if resume_enabled:
+            stage_files = get_stage_output_files(stage_dir)
+            checkpoint.mark_stage_completed(stage_name, stage_files)
 
         if "agg_to" not in stage_cfg:
             in_fps = out_fps

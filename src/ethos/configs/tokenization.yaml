@@ -8,6 +8,7 @@ output_dir: data/tokenized_datasets
 out_fn: null
 vocab: null
 num_quantiles: 10
+resume: false
 
 code_counts_fn: code_counts.csv
 quantiles_fn: quantiles.json

@@ -135,6 +135,22 @@ ethos_tokenize -m worker='range(0,2)' \
     out_fn=test
 ```
 
+**Restart Functionality**: If the tokenization process is interrupted, you can restart from where it left off by adding the `resume=true` parameter:
+
+```bash
+ethos_tokenize -m worker='range(0,7)' \
+    input_dir=$input_dir/train \
+    output_dir=$output_dir \
+    out_fn=train \
+    resume=true  # resumes from the last completed stage
+```
+
+The restart feature:
+- Saves progress after each stage completion
+- Skips already completed stages when resuming
+- Works with both single and multi-worker configurations
+- Creates a checkpoint file at `output_dir/tokenization_checkpoint.json`
+
 See the full example in `scripts/run_tokenization.sh`.
 
 2. `ethos_train` - runs the model training.

@@ -1,6 +1,7 @@
 import pickle
 import shutil
 import time
+import os
 from pathlib import Path
 
 import hydra
@@ -13,8 +14,8 @@ from ..constants import SpecialToken as ST
 from ..datasets import TimelineDataset
 from ..inference.utils import wait_for_workers
 from ..vocabulary import Vocabulary
-from .checkpoint import TokenizationCheckpoint, get_stage_output_files, verify_stage_outputs
-from .run_stage import run_stage
+from .checkpoint import TokenizationCheckpoint, get_stage_output_files, verify_stage_outputs, wait_for_checkpoint_consistency
+from .run_stage_optimized import run_stage_optimized, run_stage_memory_optimized
 from .utils import load_function
 
 OmegaConf.register_new_resolver("default_if_null", lambda a, b: b if a is None else a)
@@ -33,25 +34,42 @@ def main(cfg: DictConfig):
     cfg.output_dir = str(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Initialize checkpoint system
+    # Performance optimization settings
+    max_workers = cfg.get('max_workers', 16)  # Use all 16 cores
+    memory_limit_gb = cfg.get('memory_limit_gb', 12)  # 12GB per worker (200GB / 16 cores)
+    chunk_size = cfg.get('chunk_size', 4)  # Files per chunk
+    use_memory_optimized = cfg.get('use_memory_optimized', False)  # For memory-constrained systems
+
+    # Initialize checkpoint system - only for worker 1 (main process)
     checkpoint = TokenizationCheckpoint(output_dir)
     resume_enabled = cfg.get('resume', False)
+    is_main_worker = cfg.worker == 1
     
-    if resume_enabled:
-        checkpoint_loaded = checkpoint.load()
-        if checkpoint_loaded:
-            logger.info(f"Resuming tokenization from checkpoint")
+    if is_main_worker:
+        if resume_enabled:
+            checkpoint_loaded = checkpoint.load()
+            if checkpoint_loaded:
+                logger.info(f"Resuming tokenization from checkpoint")
+            else:
+                logger.info(f"No checkpoint found, starting fresh tokenization")
         else:
-            logger.info(f"No checkpoint found, starting fresh tokenization")
-    else:
-        # Clear any existing checkpoint if not resuming
-        checkpoint.clear()
+            # Clear any existing checkpoint if not resuming
+            checkpoint.clear()
 
     logger.info(f"Tokenizing '{input_dir}' using the {dataset.upper()} preprocessing pipeline.")
+    logger.info(f"Performance settings: max_workers={max_workers}, memory_limit_gb={memory_limit_gb}, chunk_size={chunk_size}")
 
     in_fps = list(input_dir.glob("*.parquet"))
     logger.info(f"Found {len(in_fps)} patient splits in '{input_dir}'.")
     assert in_fps, "No parquet files found!"
+
+    # Optimize Polars settings for high-performance processing
+    pl.Config.set_fmt_str_lengths(50)
+    pl.Config.set_tbl_rows(20)
+    
+    # Set environment variables for optimal performance
+    os.environ['POLARS_MAX_THREADS'] = str(max_workers)
+    os.environ['PYARROW_IGNORE_TIMEZONE'] = '1'
 
     i = 1
     for stage_cfg in cfg.dataset.stages:
@@ -64,8 +82,8 @@ def main(cfg: DictConfig):
             i += 1
             continue
             
-        # Check if stage is already completed
-        if resume_enabled and checkpoint.is_stage_completed(stage_name):
+        # Check if stage is already completed (only main worker does checkpoint operations)
+        if is_main_worker and resume_enabled and checkpoint.is_stage_completed(stage_name):
             logger.info(f"Stage {stage_name} already completed, skipping")
             # Use the output files from the completed stage
             completed_files = checkpoint.get_completed_stage_files(stage_name)
@@ -74,8 +92,8 @@ def main(cfg: DictConfig):
             i += 1
             continue
             
-        # Set current stage for checkpointing
-        if resume_enabled:
+        # Set current stage for checkpointing (only main worker)
+        if is_main_worker and resume_enabled:
             checkpoint.set_current_stage(stage_name)
             
         stage_dir.mkdir(parents=True, exist_ok=True)
@@ -90,15 +108,33 @@ def main(cfg: DictConfig):
             func = load_function(stage_cfg.name, "ethos.tokenize.common")
             transform_fns.append(func)
 
-        run_stage(in_fps, out_fps, *transform_fns, worker=cfg.worker, **stage_cfg)
+        # Use optimized stage runner based on memory constraints
+        if use_memory_optimized:
+            run_stage_memory_optimized(
+                in_fps, out_fps, *transform_fns, 
+                worker=cfg.worker, 
+                **stage_cfg
+            )
+        else:
+            run_stage_optimized(
+                in_fps, out_fps, *transform_fns, 
+                worker=cfg.worker,
+                max_workers=max_workers,
+                chunk_size=chunk_size,
+                memory_limit_gb=memory_limit_gb,
+                **stage_cfg
+            )
 
         # Make workers wait for lock file deletion to avoid moving on prematurely
         wait_for_workers(stage_dir)
 
-        # Mark stage as completed and save checkpoint
-        if resume_enabled:
+        # Mark stage as completed and save checkpoint (only main worker)
+        if is_main_worker and resume_enabled:
             stage_files = get_stage_output_files(stage_dir)
             checkpoint.mark_stage_completed(stage_name, stage_files)
+        elif not is_main_worker and resume_enabled:
+            # Non-main workers wait for checkpoint consistency
+            wait_for_checkpoint_consistency(output_dir, stage_name)
 
         if "agg_to" not in stage_cfg:
             in_fps = out_fps

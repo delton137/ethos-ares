@@ -10,6 +10,12 @@ vocab: null
 num_quantiles: 10
 resume: false
 
+# Performance optimization settings for high-performance systems
+max_workers: 16  # Number of parallel workers (set to number of CPU cores)
+memory_limit_gb: 12  # Memory limit per worker in GB (200GB / 16 cores = 12.5GB)
+chunk_size: 4  # Number of files to process per worker batch
+use_memory_optimized: false  # Set to true for memory-constrained systems
+
 code_counts_fn: code_counts.csv
 quantiles_fn: quantiles.json
 intervals_fn: interval_estimates.json

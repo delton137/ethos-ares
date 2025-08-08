@@ -7,20 +7,25 @@
 #SBATCH --output=ethos_tokenize_hp.log
 
 # High-performance tokenization script optimized for 16 cores with 200GB RAM
-# Usage: ./scripts/run_tokenization_high_performance.sh [suffix] [resume]
+# Usage: ./scripts/run_tokenization_high_performance.sh [suffix] [resume] [root_dir]
 
 # this script is intended to be run from the project root
 suffix=$1
 resume=${2:-true}  # Default to true for high-performance runs
+root_dir=${3:-/home/jupyter/workspaces/ehrtransformerbaseline}  # Default root directory
 
 if [[ -n "$suffix" && ! "$suffix" =~ ^[-_] ]]; then
     suffix="-$suffix"
 fi
 
+# Change to the root directory
+cd "$root_dir"
+
 input_dir="data/mimic-2.2-meds${suffix//_/-}/data"
 output_dir="data/tokenized_datasets/mimic${suffix//-/_}"
 
 echo "=== HIGH-PERFORMANCE ETHOS TOKENIZATION ==="
+echo "Root directory: $root_dir"
 echo "System specifications:"
 echo "  CPU cores: 16"
 echo "  Memory: 200GB"
@@ -28,6 +33,13 @@ echo "  Input directory: $input_dir"
 echo "  Output directory: $output_dir"
 echo "  Resume: $resume"
 echo
+
+# Check if input directory exists
+if [[ ! -d "$input_dir" ]]; then
+    echo "ERROR: Input directory not found: $input_dir"
+    echo "Please check the path and ensure the MEDS data is available."
+    exit 1
+fi
 
 # Performance tuning for high-performance system
 export OMP_NUM_THREADS=16

@@ -1,39 +1,39 @@
 model_type: "decoder"
-data_fp: "/home/jupyter/workspaces/ehrtransformerbaseline/ethos_data"
-val_size: 0.05
-out_dir: "out"
-eval_interval: 2000
-log_interval: 1
+data_fp: "ethos_data"
+val_size: 0.1
+out_dir: "cpu_test_model"
+eval_interval: 100
+log_interval: 10
 resume: false
 # logging
 wandb_log: false
 wandb_project: "ethos"
 wandb_run_name: "ethos_run"
 # training parameters
-gradient_accumulation_steps: 40 # Assuming 5 * 8
-batch_size: 32
+gradient_accumulation_steps: 8
+batch_size: 4
 # model parameters
-n_positions: 2048
-n_layer: 1
+n_positions: 256
+n_layer: 2
 n_head: 4
-n_embd: 64
+n_embd: 128
 dropout: 0
 activation: "gelu"
 # optimizer parameters
-max_iters: 100000
-lr: 0.0006 # Learning rate
+max_iters: 500
+lr: 0.0001 # Learning rate
 weight_decay: 0.1
 beta1: 0.9
 beta2: 0.95
 grad_clip: 1.0
 # learning rate schedule
-warmup_iters: 2000
-lr_decay_iters: 50000
-min_lr: 0.00006
+warmup_iters: 100
+lr_decay_iters: 250
+min_lr: 0.00001
 # system
 backend: "nccl" # "nccl", "gloo"
 device: "cpu" # "cuda", "cpu"
-dtype: "bfloat16" # "float32", "bfloat16", "float16"
+dtype: "float32" # "float32", "bfloat16", "float16"
 no_compile: false
 
 hydra:

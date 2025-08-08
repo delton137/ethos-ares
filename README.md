@@ -241,3 +241,6 @@ Pawel Renc, Yugang Jia, Anthony E Samir, Jaroslaw Was, Quanzheng Li, David W Bat
 	pages = {1--10},
 }
 ```
+
+
+python omop_to_meds_converter.py --input_dir /home/jupyter/workspaces/ehrtransformerbaseline/omop_data --output_dir /home/jupyter/workspaces/ehrtransformerbaseline/meds_data --split_ratio 0.7

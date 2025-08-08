@@ -12,10 +12,7 @@ def estimate_loss(
 ) -> dict:
     rank = int(os.environ.get("RANK", -1))
     is_distributed = rank != -1
-
-    if is_distributed:
-        eval_iters = math.ceil(eval_iters / int(os.environ["WORLD_SIZE"]))
-
+    
     out = {}
     for split, dataloader in loaders:
         # Get device from model parameters instead of model.device

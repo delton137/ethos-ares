@@ -1,6 +1,6 @@
 model_type: "decoder"
-data_fp: ???
-val_size: ???
+data_fp: "/home/jupyter/workspaces/ehrtransformerbaseline/ethos_data"
+val_size: 0.05
 out_dir: "out"
 eval_interval: 2000
 log_interval: 1

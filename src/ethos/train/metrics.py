@@ -18,8 +18,17 @@ def estimate_loss(
 
     out = {}
     for split, dataloader in loaders:
-        losses = th.empty(eval_iters, device=model.device)
+        # Get device from model parameters instead of model.device
+        device = next(model.parameters()).device
+        losses = th.empty(eval_iters, device=device)
         for i, (X, Y) in zip(range(eval_iters), dataloader):
+            # Move tensors to device
+            Y = Y.to(device, non_blocking=True)
+            if isinstance(X, tuple):
+                X = (X[0].to(device, non_blocking=True), X[1].to(device, non_blocking=True))
+            else:
+                X = X.to(device, non_blocking=True)
+            
             with ctx:
                 if isinstance(X, tuple):
                     output = model(input_ids=X[0], decoder_input_ids=X[1], labels=Y)

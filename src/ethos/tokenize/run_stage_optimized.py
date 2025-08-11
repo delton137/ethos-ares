@@ -186,3 +186,4 @@ def run_stage_memory_optimized(
 
 # Backward compatibility - use optimized version by default
 run_stage = run_stage_optimized
+

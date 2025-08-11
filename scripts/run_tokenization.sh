@@ -1,70 +1,26 @@
-#!/bin/bash -l
-#SBATCH --job-name=ethos_tokenize::proj=IRB2023P002279,
-#SBATCH --time=6:00:00
-#SBATCH --partition=defq
-#SBATCH --output=ethos_tokenize.log
+#!/bin/bash
 
-# this script is intended to be run from the project root
-suffix=$1
-resume=${2:-false}  # Default to false if not provided
+# Clean up function to remove stale lock files
+cleanup_stale_locks() {
+    echo "Cleaning up stale lock files..."
+    find . -name "*.json" -path "*/.data_*.parquet_cache/locks/*" -mtime +1 -delete 2>/dev/null || true
+    echo "Cleanup completed."
+}
 
-if [[ -n "$suffix" && ! "$suffix" =~ ^[-_] ]]; then
-    suffix="-$suffix"
-fi
+# Set directories
+input_dir="/home/jupyter/workspaces/ehrtransformerbaseline/meds_data/data"
+output_dir="/home/jupyter/workspaces/ehrtransformerbaseline/ethos_data"
 
-input_dir="data/mimic-2.2-meds${suffix//_/-}/data"
-output_dir="data/tokenized_datasets/mimic${suffix//-/_}"
+# Clean up stale locks before starting
+cleanup_stale_locks
 
-echo "Tokenization parameters:"
-echo "  Input directory: $input_dir"
-echo "  Output directory: $output_dir"
-echo "  Resume: $resume"
-echo
-
-singularity_preamble="
-export PATH=\$HOME/.local/bin:\$PATH
-
-# Install ethos
-cd /ethos
-pip install \
-    --no-deps \
-    --no-index \
-    --no-build-isolation \
-    --user \
-    -e  \
-    . 1>/dev/null
-"
-
-script_body="
-set -e
-
-clear
-ethos_tokenize -m worker='range(0,7)' \
-    input_dir=$input_dir/train \
+# Run tokenization
+ethos_tokenize -m worker='range(0,8)' \
+    input_dir=$input_dir \
     output_dir=$output_dir \
     out_fn=train \
-    resume=$resume
-
-ethos_tokenize -m worker='range(0,2)' \
-    input_dir=$input_dir/test \
-    vocab=$output_dir/train \
-    output_dir=$output_dir \
-    out_fn=test \
-    resume=$resume
-"
-
-module load singularity 2>/dev/null
-
-if command -v singularity >/dev/null; then
-    singularity exec \
-        --contain \
-        --nv \
-        --writable-tmpfs \
-        --bind "$(pwd)":/ethos \
-        --bind /mnt:/mnt \
-        ethos.sif \
-        bash -c "${singularity_preamble}${script_body}"
-else
-    echo Singularity not found, running using locally using bash.
-    bash -c "${script_body}"
-fi
+    resume=false \
+    max_workers=8 \
+    memory_limit_gb=10 \
+    chunk_size=4 \
+    use_memory_optimized=false

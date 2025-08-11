@@ -1,25 +1,19 @@
-#!/bin/bash -l
-#SBATCH --job-name=ethos_train::proj=IRB2023P002279,
-#SBATCH --time=3-0
-#SBATCH --partition=defq
-#SBATCH --gres=gpu:8
-#SBATCH --output=ethos_train.log
+#!/bin/bash
 
-# this script is intended to be run from the project root
-export OMP_NUM_THREADS=20
+# Run this from the project root directory
 
-dataset="mimic_ed"
-dataset_name="mimic"
+# Configuration
+dataset="all_of_us"  # Updated to match your dataset
+data_path="ethos_data/train"  # Updated to match your output directory
 
-data_path=data/tokenized_datasets/$dataset
-clear
+# Check if tokenized data exists
 if [[ ! -d $data_path ]]; then
     echo "Dataset directory not found: $data_path"
+    echo "Please run tokenization first: bash scripts/run_tokenization.sh"
     exit 1
 fi
 
-shift 1
-
+# Model hyperparameters
 BATCH_SIZE=32
 N_POSITIONS=2048
 N_LAYER=6
@@ -31,63 +25,73 @@ MIN_LR=0.00001
 
 model_name="layer_${N_LAYER}_do_${DROPOUT}"
 
-singularity_preamble="
-export PATH=\$HOME/.local/bin:\$PATH
-export LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/cuda/compat/:/.singularity.d/libs/
-
-# Install ethos
-cd /ethos
-pip install \
-    --no-deps \
-    --no-index \
-    --no-build-isolation \
-    --user \
-    -e  \
-    . 1>/dev/null
-
-# Use other tmp dir to avoid /tmp filling up and preserve the cache across the runs
-export TORCHINDUCTOR_CACHE_DIR=/ethos/torchinductor_cache
-"
-
-script_body="
-torchrun --no_python --standalone --nproc_per_node=\${NUM_GPUS} ethos_train \
-  data_fp=$data_path/train \
-  val_size=6 \
-  batch_size=$BATCH_SIZE \
-  n_positions=$N_POSITIONS \
-  n_layer=$N_LAYER \
-  n_head=$N_HEAD \
-  n_embd=$N_EMBD \
-  dropout=$DROPOUT \
-  lr=$LR \
-  min_lr=$MIN_LR \
-  log_interval=10 \
-  eval_interval=1500 \
-  gradient_accumulation_steps=16 \
-  warmup_iters=5000 \
-  max_iters=200000 \
-  lr_decay_iters=100000 \
-  wandb_log=true \
-  wandb_project="ethos-meds-$dataset_name" \
-  wandb_run_name=$model_name \
-  $* \
-  out_dir="${data_path}/models/${model_name}"
-"
-
-module load singularity 2>/dev/null
-
-if command -v singularity >/dev/null; then
-    export NUM_GPUS=${SLURM_GPUS_ON_NODE}
-    singularity exec \
-        --contain \
-        --nv \
-        --writable-tmpfs \
-        --bind "$(pwd)":/ethos \
-        --bind /mnt:/mnt \
-        ethos.sif \
-        bash -c "${singularity_preamble}${script_body}"
+# Detect number of GPUs
+NUM_GPUS=$(nvidia-smi --list-gpus 2>/dev/null | wc -l)
+if [[ $NUM_GPUS -eq 0 ]]; then
+    echo "No GPUs detected, using CPU"
+    DEVICE="cpu"
+    NUM_GPUS=1
 else
-    NUM_GPUS=$(nvidia-smi --list-gpus 2>/dev/null | wc -l)
-    export NUM_GPUS
-    bash -c "${script_body}"
+    echo "Detected $NUM_GPUS GPU(s)"
+    DEVICE="cuda"
+fi
+
+echo "Starting training with:"
+echo "  Dataset: $dataset"
+echo "  Data path: $data_path"
+echo "  Model: $model_name"
+echo "  GPUs: $NUM_GPUS"
+echo "  Device: $DEVICE"
+echo ""
+
+# Run training
+if [[ $DEVICE == "cuda" ]]; then
+    # Multi-GPU training
+    torchrun --no_python --standalone --nproc_per_node=$NUM_GPUS ethos_train \
+        data_fp=$data_path \
+        val_size=6 \
+        batch_size=$BATCH_SIZE \
+        n_positions=$N_POSITIONS \
+        n_layer=$N_LAYER \
+        n_head=$N_HEAD \
+        n_embd=$N_EMBD \
+        dropout=$DROPOUT \
+        lr=$LR \
+        min_lr=$MIN_LR \
+        log_interval=10 \
+        eval_interval=1500 \
+        gradient_accumulation_steps=16 \
+        warmup_iters=5000 \
+        max_iters=200000 \
+        lr_decay_iters=100000 \
+        wandb_log=true \
+        wandb_project="ethos-meds-$dataset" \
+        wandb_run_name=$model_name \
+        $* \
+        out_dir="${data_path}/models/${model_name}"
+else
+    # CPU training
+    ethos_train \
+        data_fp=$data_path \
+        val_size=6 \
+        batch_size=$BATCH_SIZE \
+        n_positions=$N_POSITIONS \
+        n_layer=$N_LAYER \
+        n_head=$N_HEAD \
+        n_embd=$N_EMBD \
+        dropout=$DROPOUT \
+        lr=$LR \
+        min_lr=$MIN_LR \
+        log_interval=10 \
+        eval_interval=1500 \
+        gradient_accumulation_steps=16 \
+        warmup_iters=5000 \
+        max_iters=200000 \
+        lr_decay_iters=100000 \
+        wandb_log=true \
+        wandb_project="ethos-meds-$dataset" \
+        wandb_run_name=$model_name \
+        device=cpu \
+        $* \
+        out_dir="${data_path}/models/${model_name}"
 fi

@@ -5,6 +5,7 @@ stages:
       codes_to_remove:
         - NO_MATCHING_CONCEPT  # Remove unmapped concepts
         - NULL_CONCEPT
+        - UNKNOWN  # Remove unknown codes for cleaner data
       is_prefix: true
 
   - name: preprocessing
@@ -12,6 +13,7 @@ stages:
       - LabData.retain_only_test_with_numeric_result
       - TransferData.retain_only_transfer_and_admit_types
       - DemographicData.process_race
+      # Removed marital status for stability
       - InpatientData.process_drg_codes
       - InpatientData.process_hospital_admissions
       - InpatientData.process_hospital_discharges # must be before processing diagnoses
@@ -84,6 +86,7 @@ stages:
       static_code_prefixes:
         - MEDS_BIRTH
         - GENDER
+        # Removed MARITAL for stability
         - RACE
         - BMI
 
@@ -92,6 +95,7 @@ stages:
       codes_to_remove:
         - MEDS_BIRTH
         - GENDER
+        # Removed MARITAL for stability
         - RACE
         - BMI
       is_prefix: true
@@ -108,3 +112,12 @@ stages:
 
   - name: CodeCounter
     agg_to: ${output_dir}/${code_counts_fn}
+    skip: ${is_not_null:${vocab}}
+
+  - name: apply_vocab
+    params:
+      vocab: ${vocab}
+
+  - name: tokenize
+    params:
+      vocab: ${vocab}

@@ -15,13 +15,13 @@ output_dir="/home/jupyter/workspaces/ehrtransformerbaseline/ethos_data"
 cleanup_stale_locks
 
 # Run tokenization with All of Us configuration (no marital status)
-ethos_tokenize -m worker='range(0,8)' \
+ethos_tokenize -m worker='range(0,6)' \
     input_dir=$input_dir \
     output_dir=$output_dir \
     out_fn=train \
     dataset=all_of_us_no_marital \
     resume=false \
-    max_workers=8 \
+    max_workers=4 \
     memory_limit_gb=10 \
     chunk_size=4 \
     use_memory_optimized=false

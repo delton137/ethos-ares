@@ -1,10 +1,11 @@
 #!/bin/bash
 
+# Optimized training script for one year of All of Us data
 # Run this from the project root directory
 
 # Configuration
-dataset="all_of_us"  # Updated to match your dataset
-data_path="ethos_data/train"  # Updated to match your output directory
+dataset="all_of_us"
+data_path="ethos_data/train"
 
 # Check if tokenized data exists
 if [[ ! -d $data_path ]]; then
@@ -13,17 +14,20 @@ if [[ ! -d $data_path ]]; then
     exit 1
 fi
 
-# Model hyperparameters
-BATCH_SIZE=32
-N_POSITIONS=2048
+# Optimized hyperparameters for one year of All of Us data
+BATCH_SIZE=64          # Increased from 32 for better GPU utilization
+N_POSITIONS=1024       # Reduced from 2048 for one year of data
 N_LAYER=6
 N_HEAD=12
 N_EMBD=768
-DROPOUT=0.3
-LR=0.0006
+DROPOUT=0.1            # Reduced from 0.3 for smaller dataset
+LR=0.001               # Increased from 0.0006 for faster convergence
 MIN_LR=0.00001
+WARMUP_ITERS=1000      # Reduced from 5000 for smaller dataset
+MAX_ITERS=50000        # Reduced from 200000 for one year of data
+LR_DECAY_ITERS=25000   # Reduced from 100000
 
-model_name="layer_${N_LAYER}_do_${DROPOUT}"
+model_name="all_of_us_1year_layer_${N_LAYER}_do_${DROPOUT}"
 
 # Detect number of GPUs
 NUM_GPUS=$(nvidia-smi --list-gpus 2>/dev/null | wc -l)
@@ -31,25 +35,30 @@ if [[ $NUM_GPUS -eq 0 ]]; then
     echo "No GPUs detected, using CPU"
     DEVICE="cpu"
     NUM_GPUS=1
+    # Reduce batch size for CPU
+    BATCH_SIZE=16
 else
     echo "Detected $NUM_GPUS GPU(s)"
     DEVICE="cuda"
 fi
 
-echo "Starting training with:"
+echo "Starting optimized training for one year of All of Us data:"
 echo "  Dataset: $dataset"
 echo "  Data path: $data_path"
 echo "  Model: $model_name"
 echo "  GPUs: $NUM_GPUS"
 echo "  Device: $DEVICE"
+echo "  Batch size: $BATCH_SIZE"
+echo "  Max iterations: $MAX_ITERS"
+echo "  Learning rate: $LR"
 echo ""
 
 # Run training
 if [[ $DEVICE == "cuda" ]]; then
-    # Multi-GPU training
+    # Multi-GPU training with optimized settings
     torchrun --no_python --standalone --nproc_per_node=$NUM_GPUS ethos_train \
         data_fp=$data_path \
-        val_size=6 \
+        val_size=10 \
         batch_size=$BATCH_SIZE \
         n_positions=$N_POSITIONS \
         n_layer=$N_LAYER \
@@ -58,22 +67,22 @@ if [[ $DEVICE == "cuda" ]]; then
         dropout=$DROPOUT \
         lr=$LR \
         min_lr=$MIN_LR \
-        log_interval=10 \
-        eval_interval=1500 \
-        gradient_accumulation_steps=16 \
-        warmup_iters=5000 \
-        max_iters=200000 \
-        lr_decay_iters=100000 \
+        log_interval=50 \
+        eval_interval=500 \
+        gradient_accumulation_steps=8 \
+        warmup_iters=$WARMUP_ITERS \
+        max_iters=$MAX_ITERS \
+        lr_decay_iters=$LR_DECAY_ITERS \
         wandb_log=true \
-        wandb_project="ethos-meds-$dataset" \
+        wandb_project="ethos-all-of-us-1year" \
         wandb_run_name=$model_name \
         $* \
         out_dir="${data_path}/models/${model_name}"
 else
-    # CPU training
+    # CPU training with reduced settings
     ethos_train \
         data_fp=$data_path \
-        val_size=6 \
+        val_size=10 \
         batch_size=$BATCH_SIZE \
         n_positions=$N_POSITIONS \
         n_layer=$N_LAYER \
@@ -82,14 +91,14 @@ else
         dropout=$DROPOUT \
         lr=$LR \
         min_lr=$MIN_LR \
-        log_interval=10 \
-        eval_interval=1500 \
-        gradient_accumulation_steps=16 \
-        warmup_iters=5000 \
-        max_iters=200000 \
-        lr_decay_iters=100000 \
+        log_interval=50 \
+        eval_interval=500 \
+        gradient_accumulation_steps=8 \
+        warmup_iters=$WARMUP_ITERS \
+        max_iters=$MAX_ITERS \
+        lr_decay_iters=$LR_DECAY_ITERS \
         wandb_log=true \
-        wandb_project="ethos-meds-$dataset" \
+        wandb_project="ethos-all-of-us-1year" \
         wandb_run_name=$model_name \
         device=cpu \
         $* \

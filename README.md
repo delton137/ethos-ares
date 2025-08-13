@@ -35,6 +35,13 @@ available [here](https://github.com/ipolharvard/ethos-paper)) to achieve higher 
 </a>
 </p>
 
+## commands
+
+training 
+```bash 
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True  && torchrun --nproc_per_node=4 train.py --tag aou_10days   --data_dir /home/jupyter/workspaces/ehrtransformerbaseline/simple_ehr_transformer/processed_data_aou_10days   --batch_size 8   --grad_accum_steps 4   --max_seq_len 1024   --learning_rate 3e-4   --use_amp   --num_workers 
+```
+
 ## Paper reproducibility
 
 We provide the complete code necessary to reproduce all experiments presented in the paper.

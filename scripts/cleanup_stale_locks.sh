@@ -20,3 +20,4 @@ find . -type d -name ".data_*.parquet_cache" -empty -delete 2>/dev/null || true
 echo "Cleanup completed!"
 echo ""
 echo "You can now run your tokenization process without the lock file issues."
+
